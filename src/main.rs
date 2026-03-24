@@ -8,6 +8,7 @@ use axum::{
 };
 use jsonwebtoken::{DecodingKey, Validation, decode, decode_header};
 use serde::{Deserialize, Serialize};
+use tower_http::cors::{Any, CorsLayer};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct Claims {
@@ -98,9 +99,15 @@ async fn main() {
         .await
         .expect("can't connect to Logto, please sure 3001 port is start");
 
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods(Any)
+        .allow_headers(Any);
+
     let app = Router::new()
         .route("/api/data", get(protected_handler))
-        .route_layer(middleware::from_fn(auth_middleware));
+        .route_layer(middleware::from_fn(auth_middleware))
+        .layer(cors);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await.unwrap();
     println!("Rust Backend Server running at http://localhost:8080");
