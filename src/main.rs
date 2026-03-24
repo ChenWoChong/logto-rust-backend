@@ -41,21 +41,35 @@ async fn auth_middleware(mut req: Request, next: Next) -> Result<Response, Statu
     let header = decode_header(token).map_err(|_| StatusCode::UNAUTHORIZED)?;
     let kid = header.kid.ok_or(StatusCode::UNAUTHORIZED)?;
 
-    let key = jwks["keys"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|k| k["kid"] == kid)
-        .unwrap();
-    let n = key["n"].as_str().unwrap();
-    let e = key["e"].as_str().unwrap();
+    let keys_array = jwks["keys"].as_array().ok_or_else(|| {
+        eprintln!("JWKS keys is not an array: {:?}", jwks["keys"]);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
-    let decoding_key =
-        DecodingKey::from_rsa_components(n, e).map_err(|_| StatusCode::UNAUTHORIZED)?;
+    let key = keys_array.iter().find(|k| k["kid"] == kid).ok_or_else(|| {
+        eprintln!(
+            "No matching kid found. Looking for: {}, available keys: {:?}",
+            kid, keys_array
+        );
+        StatusCode::UNAUTHORIZED
+    })?;
+    let kty = key["kty"].as_str().unwrap_or("");
 
-    let mut validation = Validation::new(jsonwebtoken::Algorithm::RS256);
+    let decoding_key = if kty == "EC" {
+        let x = key["x"].as_str().unwrap();
+        let y = key["y"].as_str().unwrap();
+        DecodingKey::from_ec_components(x, y).map_err(|_| StatusCode::UNAUTHORIZED)?
+    } else if kty == "RSA" {
+        let n = key["n"].as_str().unwrap();
+        let e = key["e"].as_str().unwrap();
+        DecodingKey::from_rsa_components(n, e).map_err(|_| StatusCode::UNAUTHORIZED)?
+    } else {
+        return Err(StatusCode::UNAUTHORIZED);
+    };
+
+    let mut validation = Validation::new(header.alg);
     validation.set_audience(&["https://api.rust-demo.com"]);
-    validation.set_issuer(&["https://localhost:3001/oidc"]);
+    validation.set_issuer(&["http://localhost:3001/oidc"]);
 
     let token_data = decode::<Claims>(token, &decoding_key, &validation).map_err(|e| {
         println!("Token verify fail: {:?}", e);
