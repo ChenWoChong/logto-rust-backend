@@ -85,7 +85,7 @@ async fn protected_handler(
     axum::extract::Extension(claims): axum::extract::Extension<Claims>,
 ) -> impl IntoResponse {
     let response = serde_json::json!({
-        "message": "Hello from Rust, your token is valid",
+        "message": "Hello from Rust backend, your token is valid!",
         "user_id": claims.sub,
         "audience": claims.aud,
     });
